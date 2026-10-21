@@ -10,6 +10,7 @@ main.py ──► MainWindow
               ├── ParameterPanel   (все параметры, сигнал changed)
               ├── PlotGrid         (7 графиков от λ)
               ├── FilmWindow   ◄── слушает ParameterPanel.changed
+              │     └── FitPanel   (подгонка → ParameterPanel.set_model)
               └── AngularWindow ◄── слушает ParameterPanel.changed
 ```
 
@@ -28,6 +29,7 @@ main.py ──► MainWindow
 | [parameter_panel.py](parameter_panel.md)   | Левая панель параметров → объект `Material`   |
 | [main_window.py](main_window.md)           | Главное окно, 7 графиков, меню                |
 | [film_window.py](film_window.md)           | Плёнка: T и R против эксперимента, RMS        |
+| [fit_panel.py](fit_panel.md)               | Машинная подгонка параметров (в окне плёнки)  |
 | [angular_window.py](angular_window.md)     | Падение под углом: TE/TM                      |
 | [help_texts.py](help_texts.md)             | Инструкция и контакты разработчиков           |
 

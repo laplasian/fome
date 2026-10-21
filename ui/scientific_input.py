@@ -1,5 +1,7 @@
 """Поле ввода числа вида  мантисса × 10^степень  (степень редактируется отдельно)."""
 
+import math
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDoubleSpinBox, QHBoxLayout, QLabel, QSpinBox, QWidget
 
@@ -33,6 +35,24 @@ class ScientificInput(QWidget):
 
     def value(self) -> float:
         return self.mantissa.value() * 10.0 ** self.exponent.value()
+
+    def setValue(self, value: float):
+        """Раскладывает число на мантиссу и степень: 5.9e22 -> 5.9 и 22."""
+        if value > 0:
+            exponent = math.floor(math.log10(value))
+            mantissa = round(value / 10.0**exponent, self.mantissa.decimals())
+            if mantissa >= 10:  # округление 9.9996 -> 10.000
+                mantissa, exponent = mantissa / 10, exponent + 1
+        else:
+            mantissa, exponent = 0.0, self.exponent.value()
+
+        for box in (self.mantissa, self.exponent):
+            box.blockSignals(True)
+        self.mantissa.setValue(mantissa)
+        self.exponent.setValue(exponent)
+        for box in (self.mantissa, self.exponent):
+            box.blockSignals(False)
+        self._emit()
 
     def _emit(self):
         self.valueChanged.emit(self.value())

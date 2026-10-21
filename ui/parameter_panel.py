@@ -191,6 +191,23 @@ class ParameterPanel(QWidget):
     def film_thickness_nm(self) -> float:
         return self.thickness.value()
 
+    def set_model(self, material: Material, film_thickness_nm: float):
+        """Записывает значения в поля (например, результат подгонки).
+
+        Поля округляют до своего числа знаков после запятой.
+        """
+        self.eps_inf.setValue(material.eps_inf)
+        self.thickness.setValue(film_thickness_nm)
+        self.n0.setValue(material.free.concentration_cm3)
+        self.m0.setValue(material.free.mass_in_me)
+        self.gamma0.setValue(material.free.damping_cm1)
+        self.mode_count.setValue(len(material.bound_modes))
+        for mode, (concentration, mass, wavelength, damping) in zip(material.bound_modes, self.mode_rows):
+            concentration.setValue(mode.concentration_cm3)
+            mass.setValue(mode.mass_in_me)
+            wavelength.setValue(mode.wavelength_nm)
+            damping.setValue(mode.damping_cm1)
+
     def wavelength_grid(self):
         start, stop = self.wl_start.value(), self.wl_stop.value()
         if start >= stop:

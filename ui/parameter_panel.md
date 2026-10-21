@@ -27,3 +27,4 @@
 | `material()`           | `Material` — для `calculate_spectrum` и др.   |
 | `film_thickness_nm()`  | толщина плёнки, нм                            |
 | `wavelength_grid()`    | массив $\lambda$; ошибка, если «от» ≥ «до»    |
+| `set_model(material, d)` | записать значения в поля (результат подгонки, «Вернуть как было») |

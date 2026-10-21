@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 from calc.comparison import compare_with_experiment
 from calc.data_io import load_experimental_spectrum, save_spectrum
 from calc.spectrum import calculate_spectrum
+from ui.fit_panel import FitPanel
 from ui.parameter_panel import ParameterPanel
 from ui.plot_grid import Curve, Panel, PlotGrid
 from ui.style import COLORS
@@ -35,17 +37,25 @@ class FilmWindow(QMainWindow):
     def __init__(self, panel: ParameterPanel):
         super().__init__()
         self.setWindowTitle("Плёнка и эксперимент")
-        self.resize(1400, 750)
+        self.resize(1700, 850)
         self.panel = panel
         self.spectrum = None
         self.experiments = {key: None for key in FILM_PLOTS}  # key -> (λ, значения, имя файла)
 
         self.plots = PlotGrid()
-        central = QWidget()
-        layout = QVBoxLayout(central)
+        right = QWidget()
+        layout = QVBoxLayout(right)
         layout.addLayout(self._build_controls())
         layout.addWidget(self.plots, stretch=1)
-        self.setCentralWidget(central)
+
+        # Слева — панель машинной подгонки, справа — графики
+        self.fit_panel = FitPanel(panel, self.loaded_experiments)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.addWidget(self.fit_panel)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([520, 1080])
+        self.setCentralWidget(splitter)
 
         self.timer = QTimer(self, singleShot=True, interval=150)
         self.timer.timeout.connect(self.recalculate)
@@ -87,6 +97,15 @@ class FilmWindow(QMainWindow):
         return grid
 
     # ---------- данные ----------
+
+    def loaded_experiments(self):
+        """Загруженные спектры в виде, нужном подгонке: {"T": (λ, %), "R": (λ, %)}."""
+        names = {"film_T_percent": "T", "film_R_percent": "R"}
+        return {
+            names[key]: (experiment[0], experiment[1])
+            for key, experiment in self.experiments.items()
+            if experiment is not None
+        }
 
     def load_experiment(self, key):
         path, _ = QFileDialog.getOpenFileName(
@@ -134,6 +153,10 @@ class FilmWindow(QMainWindow):
     def _on_autoscale(self, enabled):
         self.plots.autoscale = enabled
         self.redraw()
+
+    def closeEvent(self, event):
+        self.fit_panel.shutdown()
+        super().closeEvent(event)
 
     def save(self, keys, default_name):
         if self.spectrum is None:
