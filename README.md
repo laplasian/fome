@@ -61,7 +61,7 @@ python -m venv .venv
 .venv\Scripts\python main.py
 ```
 
-Сборка в один файл `dist\DrudeLorentz.exe` (≈ 75 МБ, запускается на любом
+Сборка в один файл `dist\DrudeLorentz.exe` (≈ 100 МБ, запускается на любом
 Windows 10/11 без установки Python):
 
 ```bash
