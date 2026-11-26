@@ -10,6 +10,10 @@ from calc.parameters import Material, describe_material
 from calc.spectrum import Spectrum
 
 
+UTF8_BOM = b'\xef\xbb\xbf'
+UTF16_BOMS = (b'\xff\xfe', b'\xfe\xff')
+
+
 # ---------- Чтение эксперимента ----------
 
 def parse_two_numbers(line):
@@ -36,23 +40,32 @@ def parse_two_numbers(line):
 
 
 def read_text(path):
-    """Текст файла в любой из кодировок, которые дают приборы и Excel/Блокнот.
+    """Читает текст файла в кодировке, которую дают приборы и Excel.
 
-    UTF-8 (с BOM и без), UTF-16 (с BOM или без — по нулевым байтам), Windows-1251.
+    UTF-8 (с BOM и без), UTF-16 (с BOM или без) и Windows-1251.
+    UTF-16 без BOM узнаём по нулевым байтам: у латиницы и цифр
+    каждый второй байт равен нулю.
     """
     raw = Path(path).read_bytes()
-    if raw.startswith(b"\xef\xbb\xbf"):
-        return raw[3:].decode("utf-8", errors="replace")
-    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return raw.decode("utf-16", errors="replace")
+    if raw.startswith(UTF8_BOM):
+        return raw[len(UTF8_BOM):].decode('utf-8', errors='replace')
+    if raw.startswith(UTF16_BOMS):
+        return raw.decode('utf-16', errors='replace')
+
     sample = raw[:4000]
-    if sample and sample.count(0) > len(sample) // 4:  # UTF-16 без BOM: каждый второй байт 0
-        return raw.decode("utf-16-le" if sample[1::2].count(0) > sample[0::2].count(0) else "utf-16-be",
-                          errors="replace")
+    if sample and sample.count(0) > len(sample) // 4:
+        zeros_odd = sample[1::2].count(0)
+        zeros_even = sample[0::2].count(0)
+        if zeros_odd > zeros_even:
+            encoding = 'utf-16-le'
+        else:
+            encoding = 'utf-16-be'
+        return raw.decode(encoding, errors='replace')
+
     try:
-        return raw.decode("utf-8")
+        return raw.decode('utf-8')
     except UnicodeDecodeError:
-        return raw.decode("cp1251", errors="replace")
+        return raw.decode('cp1251', errors='replace')
 
 
 def load_experimental_spectrum(path):

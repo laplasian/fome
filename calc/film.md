@@ -54,9 +54,9 @@ $$
 
 | Функция                                       | Что возвращает      |
 |-----------------------------------------------|---------------------|
-| `film_transmission(R12, alpha, thickness_nm)` | $T_{film}$, %       |
-| `film_reflection(R12, alpha, thickness_nm)`   | $R_{film}$, %       |
-| `film_generation_points(R12, alpha, thickness_nm)` | число точек выше порога генерации |
+| `get_film_transmission(R12, alpha, thickness_nm)` | $T_{film}$, % |
+| `get_film_reflection(R12, alpha, thickness_nm)` | $R_{film}$, % |
+| `count_generation_points(R12, alpha, thickness_nm)` | число точек выше порога генерации |
 
 ## Замечание
 
@@ -67,7 +67,7 @@ $q = R^2 e^{-2\alpha d}$. При $\alpha \ge 0$ всегда $q < 1$.
 внутри плёнки усиливается. Пока $q < 1$, формулы работают, и $T + R > 100\,\%$.
 Когда $q \ge 1$ (толстая плёнка, большое $|\alpha|$), ряд расходится — это порог
 генерации, конечных $T$ и $R$ нет. В таких точках функции возвращают `NaN`, а
-`film_generation_points()` считает их число для предупреждения в окне.
+`count_generation_points()` считает их число для предупреждения в окне.
 
 Экспоненты считаются через логарифмы: при $d = 1$ мм и $\alpha \sim -10^4$ см⁻¹
 показатель $e^{-\alpha d}$ достигает $e^{1000}$, а предел float — $e^{709}$.

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from calc.dielectric_function import dielectric_function
-from calc.film import film_reflection, film_transmission
+from calc.film import get_film_reflection, get_film_transmission
 from calc.normal_reflection import amplitude_reflection, intensity_reflection, reflection_phase
 from calc.parameters import DEFAULT_FILM_THICKNESS_NM, Material
 from calc.refractive_index import absorption_coefficient, refractive_index
@@ -70,8 +70,8 @@ def calculate_spectrum(
     R12 = intensity_reflection(r12)
 
     # 5. Плёнка толщины d
-    T_film = film_transmission(R12, alpha, film_thickness_nm)
-    R_film = film_reflection(R12, alpha, film_thickness_nm)
+    T_film = get_film_transmission(R12, alpha, film_thickness_nm)
+    R_film = get_film_reflection(R12, alpha, film_thickness_nm)
 
     return Spectrum(
         wavelength_nm=wavelength_nm,

@@ -42,6 +42,7 @@ fitting          — подбор параметров, минимизирующ
 | [normal_reflection](calc/normal_reflection.md) | $r_{12}$, $R_{12}$, $\varphi_{12}$ при нормальном падении |
 | [oblique_reflection](calc/oblique_reflection.md) | TE/TM-отражение под углом $\theta$ |
 | [film](calc/film.md)                   | Пропускание и отражение плёнки в %                |
+| [presets](calc/presets.py)             | Примеры сред для меню «Примеры»                   |
 | [spectrum](calc/spectrum.md)           | Все величины как функции длины волны              |
 | [angular_spectrum](calc/angular_spectrum.md) | Все величины как функции угла падения       |
 | [data_io](calc/data_io.md)             | Импорт эксперимента и экспорт в ASCII             |
