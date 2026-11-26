@@ -11,13 +11,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from calc.comparison import compare_with_experiment
 from calc.data_io import load_experimental_spectrum, save_spectrum
+from calc.film import film_generation_points
 from calc.spectrum import calculate_spectrum
 from ui.fit_panel import FitPanel
 from ui.parameter_panel import ParameterPanel
@@ -48,10 +51,23 @@ class FilmWindow(QMainWindow):
         layout.addLayout(self._build_controls())
         layout.addWidget(self.plots, stretch=1)
 
-        # Слева — панель машинной подгонки, справа — графики
+        # Слева — вкладки «Параметры» (ручная подгонка) и «Машинная подгонка», справа — графики.
+        # Копия панели параметров связана с панелью главного окна в обе стороны.
+        self.local_panel = ParameterPanel(with_range=False)
+        self.local_panel.set_model(panel.material(), panel.film_thickness_nm())
+        self._syncing = False
+        panel.changed.connect(self._main_to_local)
+        self.local_panel.changed.connect(self._local_to_main)
+        params_scroll = QScrollArea()
+        params_scroll.setWidget(self.local_panel)
+        params_scroll.setWidgetResizable(True)
+
         self.fit_panel = FitPanel(panel, self.loaded_experiments)
+        tabs = QTabWidget()
+        tabs.addTab(params_scroll, "Параметры")
+        tabs.addTab(self.fit_panel, "Машинная подгонка")
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.fit_panel)
+        splitter.addWidget(tabs)
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([520, 1080])
@@ -66,8 +82,8 @@ class FilmWindow(QMainWindow):
     def _build_controls(self):
         grid = QGridLayout()
 
-        hint = QLabel("Параметры среды и толщина плёнки меняются в <b>главном окне</b>. "
-                      "Цель — минимальное RMS для T и R.")
+        hint = QLabel("Меняйте параметры слева (они общие с главным окном) или запустите "
+                      "машинную подгонку. Цель — минимальное RMS для T и R.")
         grid.addWidget(hint, 0, 0, 1, 6)
 
         self.file_labels = {}
@@ -95,6 +111,27 @@ class FilmWindow(QMainWindow):
         grid.addWidget(self.autoscale, 1, 5)
         grid.setColumnStretch(3, 1)
         return grid
+
+    # ---------- синхронизация панелей ----------
+
+    def _main_to_local(self):
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self.local_panel.set_model(self.panel.material(), self.panel.film_thickness_nm())
+        finally:
+            self._syncing = False
+
+    def _local_to_main(self):
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self.panel.set_model(self.local_panel.material(), self.local_panel.film_thickness_nm())
+        finally:
+            self._syncing = False
+        self.timer.start()  # главная панель меняла поля под флагом — пересчитаем сами
 
     # ---------- данные ----------
 
@@ -130,7 +167,17 @@ class FilmWindow(QMainWindow):
         except (ValueError, ArithmeticError) as error:
             self.statusBar().showMessage(f"Ошибка: {error}")
             return
-        self.statusBar().showMessage(f"Толщина плёнки d = {self.panel.film_thickness_nm():g} нм")
+        message = f"Толщина плёнки d = {self.panel.film_thickness_nm():g} нм"
+        generation = film_generation_points(
+            self.spectrum.R12, self.spectrum.alpha_cm1, self.panel.film_thickness_nm()
+        )
+        if generation:
+            message += (
+                f"   ⚠ В {generation} из {len(self.spectrum.R12)} точек усиление при Γ < 0 "
+                "превышает потери на отражение (R²·e^(−2αd) ≥ 1): ряд переотражений расходится, "
+                "T и R там не определены и не рисуются. Уменьшите d или |Γ|."
+            )
+        self.statusBar().showMessage(message)
         self.redraw()
 
     def redraw(self):
@@ -153,6 +200,10 @@ class FilmWindow(QMainWindow):
     def _on_autoscale(self, enabled):
         self.plots.autoscale = enabled
         self.redraw()
+
+    def showEvent(self, event):
+        self._main_to_local()  # окно открыли повторно — подтянуть текущие параметры
+        super().showEvent(event)
 
     def closeEvent(self, event):
         self.fit_panel.shutdown()

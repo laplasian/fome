@@ -35,6 +35,26 @@ def parse_two_numbers(line):
         return None
 
 
+def read_text(path):
+    """Текст файла в любой из кодировок, которые дают приборы и Excel/Блокнот.
+
+    UTF-8 (с BOM и без), UTF-16 (с BOM или без — по нулевым байтам), Windows-1251.
+    """
+    raw = Path(path).read_bytes()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return raw[3:].decode("utf-8", errors="replace")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+    sample = raw[:4000]
+    if sample and sample.count(0) > len(sample) // 4:  # UTF-16 без BOM: каждый второй байт 0
+        return raw.decode("utf-16-le" if sample[1::2].count(0) > sample[0::2].count(0) else "utf-16-be",
+                          errors="replace")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("cp1251", errors="replace")
+
+
 def load_experimental_spectrum(path):
     """Файл из 2 столбцов: длина волны [нм] и T или R [%].
 
@@ -42,11 +62,10 @@ def load_experimental_spectrum(path):
     Строки, которые не читаются как два числа (заголовки), пропускаются.
     """
     rows = []
-    with open(path, encoding="utf-8", errors="replace") as file:
-        for line in file:
-            pair = parse_two_numbers(line)
-            if pair is not None:
-                rows.append(pair)
+    for line in read_text(path).splitlines():
+        pair = parse_two_numbers(line)
+        if pair is not None:
+            rows.append(pair)
 
     if not rows:
         raise ValueError(f"В файле {path} не найдено ни одной строки с двумя числами")

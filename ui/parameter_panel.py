@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from calc.parameters import (
     DEFAULT_FILM_THICKNESS_NM,
     DEFAULT_WAVELENGTH_RANGE_NM,
+    LIMITS,
     MAX_BOUND_MODES,
     BoundMode,
     FreeCarriers,
@@ -47,13 +48,15 @@ class ParameterPanel(QWidget):
     # Столбцы таблицы мод связанных зарядов
     MODE_COLUMNS = ["Ni, см⁻³", "mi / mₑ", "λi, нм", "Γi, см⁻¹"]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, with_range=True):
+        """with_range=False — без группы «Диапазон длин волн» (копия панели в окне плёнки)."""
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_medium_group())
         layout.addWidget(self._build_free_group())
         layout.addWidget(self._build_bound_group())
-        layout.addWidget(self._build_range_group())
+        if with_range:
+            layout.addWidget(self._build_range_group())
         layout.addWidget(self._build_plasma_group())
         layout.addStretch()
 
@@ -75,7 +78,7 @@ class ParameterPanel(QWidget):
     def _build_free_group(self):
         group = QGroupBox("Свободные носители (Друде)")
         form = QFormLayout(group)
-        self.n0 = ScientificInput(0.0, 0, max_exponent=23)
+        self.n0 = ScientificInput(0.0, 0, max_exponent=23, max_value=LIMITS["free.concentration_cm3"][1])
         self.m0 = spin_box(1.0, 0.001, 1000.0, decimals=3, step=0.1)
         self.gamma0 = spin_box(100.0, -100_000.0, 100_000.0, decimals=1, step=10.0)
         form.addRow("N0, см⁻³", self.n0)
@@ -105,7 +108,7 @@ class ParameterPanel(QWidget):
         for row in range(MAX_BOUND_MODES):
             defaults = BoundMode()
             widgets = (
-                ScientificInput(defaults.concentration_cm3, 0, max_exponent=24),
+                ScientificInput(defaults.concentration_cm3, 0, max_exponent=24, max_value=LIMITS["bound.concentration_cm3"][1]),
                 spin_box(defaults.mass_in_me, 0.001, 1000.0, decimals=3, step=0.1),
                 spin_box(defaults.wavelength_nm, 100.0, 10_000.0, decimals=1, step=10.0),
                 spin_box(defaults.damping_cm1, -100_000.0, 100_000.0, decimals=1, step=100.0),

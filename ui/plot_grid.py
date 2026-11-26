@@ -37,7 +37,7 @@ class PlotGrid(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.figure = Figure()
+        self.figure = Figure(layout="constrained")  # оси занимают всё место, заголовки не сжимают их
         self.canvas = FigureCanvasQTAgg(self.figure)
         self.toolbar = NavigationToolbar2QT(self.canvas, self)
 
@@ -46,12 +46,32 @@ class PlotGrid(QWidget):
         self.autoscale = True
         self._axes_by_key = {}
 
+        # Двойной щелчок по графику разворачивает его на всю область, повторный — возвращает сетку.
+        self.focused_key = None
+        self._last_panels = []
+        self.canvas.mpl_connect("button_press_event", self._on_click)
+        self.canvas.setToolTip("Двойной щелчок по графику — развернуть его на всё окно, ещё раз — вернуть все")
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.toolbar)
         layout.addWidget(self.canvas)
 
+    def _on_click(self, event):
+        if not event.dblclick or event.inaxes is None:
+            return
+        clicked = next((key for key, ax in self._axes_by_key.items() if ax is event.inaxes), None)
+        self.focused_key = None if self.focused_key is not None else clicked
+        self.draw(self._last_panels)
+
     def draw(self, panels):
+        self._last_panels = list(panels)
+        if self.focused_key is not None:
+            focused = [panel for panel in panels if panel.key == self.focused_key]
+            if focused:
+                panels = focused
+            else:
+                self.focused_key = None  # развёрнутый график сняли галочкой
         old_limits = {}
         if not self.autoscale:
             old_limits = {key: (ax.get_xlim(), ax.get_ylim()) for key, ax in self._axes_by_key.items()}
@@ -65,7 +85,8 @@ class PlotGrid(QWidget):
             self.canvas.draw_idle()
             return
 
-        columns = 1 if len(panels) == 1 else 2 if len(panels) <= 4 else 3
+        # До 4 графиков — сетка 2×2, больше — две строки (7 графиков: 4 + 3), без пустых рядов
+        columns = 1 if len(panels) == 1 else 2 if len(panels) <= 4 else math.ceil(len(panels) / 2)
         rows = math.ceil(len(panels) / columns)
 
         for index, panel in enumerate(panels, start=1):
@@ -87,5 +108,4 @@ class PlotGrid(QWidget):
                 ax.set_ylim(old_limits[panel.key][1])
             self._axes_by_key[panel.key] = ax
 
-        self.figure.tight_layout()
         self.canvas.draw_idle()
