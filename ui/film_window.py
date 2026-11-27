@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -11,13 +12,16 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from calc.comparison import compare_with_experiment
 from calc.data_io import load_experimental_spectrum, save_spectrum
+from calc.film import count_generation_points
 from calc.spectrum import calculate_spectrum
 from ui.fit_panel import FitPanel
 from ui.parameter_panel import ParameterPanel
@@ -31,6 +35,46 @@ FILM_PLOTS = {
 }
 
 
+
+GENERATION_NOTE = (
+    'Порог генерации превышен\n'
+    'во всех точках.\n\n'
+    'Уменьшите толщину d или |Γ|.\n'
+    'Подробности — внизу окна.'
+)
+
+
+def get_generation_warning(spectrum, thickness_nm):
+    """Возвращает текст предупреждения о пороге генерации или ''.
+
+    При Γ < 0 и толстой плёнке ряд переотражений расходится, и T, R
+    не определены. Без пояснения пустой график выглядит как ошибка.
+    """
+    count = count_generation_points(
+        spectrum.R12, spectrum.alpha_cm1, thickness_nm
+    )
+    if count == 0:
+        return ''
+    total = len(spectrum.R12)
+    return (
+        f'В {count} из {total} точек усиление при Γ < 0 превышает потери '
+        'на отражение (R²·e^(−2αd) ≥ 1): ряд переотражений расходится, '
+        'T и R там не определены и не рисуются. Уменьшите d или |Γ|.'
+    )
+
+
+def get_empty_notes(spectrum, warning):
+    """Возвращает пояснения для графиков, где расчёт не дал ни точки."""
+    notes = {}
+    if not warning:
+        return notes
+    for key in FILM_PLOTS:
+        values = getattr(spectrum, key)
+        if not np.isfinite(values).any():
+            notes[key] = GENERATION_NOTE
+    return notes
+
+
 class FilmWindow(QMainWindow):
     """Параметры берутся из панели главного окна, пересчёт — по её сигналу changed."""
 
@@ -40,6 +84,7 @@ class FilmWindow(QMainWindow):
         self.resize(1700, 850)
         self.panel = panel
         self.spectrum = None
+        self.warning = ''
         self.experiments = {key: None for key in FILM_PLOTS}  # key -> (λ, значения, имя файла)
 
         self.plots = PlotGrid()
@@ -48,10 +93,25 @@ class FilmWindow(QMainWindow):
         layout.addLayout(self._build_controls())
         layout.addWidget(self.plots, stretch=1)
 
-        # Слева — панель машинной подгонки, справа — графики
+        # Слева вкладки «Параметры» и «Машинная подгонка», справа
+        # графики. Копия панели связана с главным окном в обе стороны.
+        self.local_panel = ParameterPanel(with_range=False)
+        self.local_panel.set_model(
+            panel.material(), panel.film_thickness_nm()
+        )
+        self._syncing = False
+        panel.changed.connect(self._main_to_local)
+        self.local_panel.changed.connect(self._local_to_main)
+        params_scroll = QScrollArea()
+        params_scroll.setWidget(self.local_panel)
+        params_scroll.setWidgetResizable(True)
+
         self.fit_panel = FitPanel(panel, self.loaded_experiments)
+        tabs = QTabWidget()
+        tabs.addTab(params_scroll, 'Параметры')
+        tabs.addTab(self.fit_panel, 'Машинная подгонка')
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(self.fit_panel)
+        splitter.addWidget(tabs)
         splitter.addWidget(right)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([520, 1080])
@@ -66,8 +126,11 @@ class FilmWindow(QMainWindow):
     def _build_controls(self):
         grid = QGridLayout()
 
-        hint = QLabel("Параметры среды и толщина плёнки меняются в <b>главном окне</b>. "
-                      "Цель — минимальное RMS для T и R.")
+        hint = QLabel(
+            'Меняйте параметры слева (они общие с главным окном) '
+            'или запустите машинную подгонку. '
+            'Цель — минимальное RMS для T и R.'
+        )
         grid.addWidget(hint, 0, 0, 1, 6)
 
         self.file_labels = {}
@@ -95,6 +158,35 @@ class FilmWindow(QMainWindow):
         grid.addWidget(self.autoscale, 1, 5)
         grid.setColumnStretch(3, 1)
         return grid
+
+    # ---------- синхронизация панелей ----------
+
+    def _main_to_local(self):
+        """Копирует параметры главного окна во вкладку «Параметры»."""
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self.local_panel.set_model(
+                self.panel.material(), self.panel.film_thickness_nm()
+            )
+        finally:
+            self._syncing = False
+
+    def _local_to_main(self):
+        """Копирует параметры из вкладки «Параметры» в главное окно."""
+        if self._syncing:
+            return
+        self._syncing = True
+        try:
+            self.panel.set_model(
+                self.local_panel.material(),
+                self.local_panel.film_thickness_nm(),
+            )
+        finally:
+            self._syncing = False
+        # Главная панель менялась под флагом, пересчитываем сами.
+        self.timer.start()
 
     # ---------- данные ----------
 
@@ -130,7 +222,12 @@ class FilmWindow(QMainWindow):
         except (ValueError, ArithmeticError) as error:
             self.statusBar().showMessage(f"Ошибка: {error}")
             return
-        self.statusBar().showMessage(f"Толщина плёнки d = {self.panel.film_thickness_nm():g} нм")
+        thickness = self.panel.film_thickness_nm()
+        self.warning = get_generation_warning(self.spectrum, thickness)
+        message = f'Толщина плёнки d = {thickness:g} нм'
+        if self.warning:
+            message += '   ⚠ ' + self.warning
+        self.statusBar().showMessage(message)
         self.redraw()
 
     def redraw(self):
@@ -148,11 +245,16 @@ class FilmWindow(QMainWindow):
                 )
                 self.rms_labels[key].setText(f"RMS = {comparison.rms:.3f} %")
             panels.append(Panel(key, title, "Длина волны λ, нм", y_label, curves))
-        self.plots.draw(panels)
+        self.plots.draw(panels, get_empty_notes(self.spectrum, self.warning))
 
     def _on_autoscale(self, enabled):
         self.plots.autoscale = enabled
         self.redraw()
+
+    def showEvent(self, event):
+        """Подтягивает текущие параметры, если окно открыли повторно."""
+        self._main_to_local()
+        super().showEvent(event)
 
     def closeEvent(self, event):
         self.fit_panel.shutdown()

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHeaderView,
     QLabel,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QVBoxLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
 from calc.parameters import (
     DEFAULT_FILM_THICKNESS_NM,
     DEFAULT_WAVELENGTH_RANGE_NM,
+    LIMITS,
     MAX_BOUND_MODES,
     BoundMode,
     FreeCarriers,
@@ -39,6 +41,18 @@ def spin_box(value, minimum, maximum, decimals=3, step=1.0, suffix=""):
     return box
 
 
+
+def fit_table_height(table, rows):
+    """Подгоняет высоту таблицы под видимые строки.
+
+    Иначе при K = 1 под одной строкой остаётся пустое место на девять.
+    """
+    height = table.horizontalHeader().sizeHint().height()
+    height += 2 * table.frameWidth()
+    for row in range(rows):
+        height += table.rowHeight(row)
+    table.setFixedHeight(height)
+
 class ParameterPanel(QWidget):
     """Собирает ввод в объект Material и сообщает об изменениях сигналом changed."""
 
@@ -47,13 +61,19 @@ class ParameterPanel(QWidget):
     # Столбцы таблицы мод связанных зарядов
     MODE_COLUMNS = ["Ni, см⁻³", "mi / mₑ", "λi, нм", "Γi, см⁻¹"]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, with_range=True):
+        """Без группы «Диапазон длин волн», если with_range=False.
+
+        Такая копия панели стоит в окне плёнки: диапазон общий
+        и задаётся только в главном окне.
+        """
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_medium_group())
         layout.addWidget(self._build_free_group())
         layout.addWidget(self._build_bound_group())
-        layout.addWidget(self._build_range_group())
+        if with_range:
+            layout.addWidget(self._build_range_group())
         layout.addWidget(self._build_plasma_group())
         layout.addStretch()
 
@@ -75,7 +95,10 @@ class ParameterPanel(QWidget):
     def _build_free_group(self):
         group = QGroupBox("Свободные носители (Друде)")
         form = QFormLayout(group)
-        self.n0 = ScientificInput(0.0, 0, max_exponent=23)
+        self.n0 = ScientificInput(
+            0.0, 0, max_exponent=23,
+            max_value=LIMITS['free.concentration_cm3'][1],
+        )
         self.m0 = spin_box(1.0, 0.001, 1000.0, decimals=3, step=0.1)
         self.gamma0 = spin_box(100.0, -100_000.0, 100_000.0, decimals=1, step=10.0)
         form.addRow("N0, см⁻³", self.n0)
@@ -86,6 +109,10 @@ class ParameterPanel(QWidget):
 
     def _build_bound_group(self):
         group = QGroupBox("Связанные заряды (Лоренц)")
+        # Группа не растягивается: лишнее место забирает addStretch.
+        group.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum
+        )
         layout = QVBoxLayout(group)
 
         form = QFormLayout()
@@ -105,7 +132,10 @@ class ParameterPanel(QWidget):
         for row in range(MAX_BOUND_MODES):
             defaults = BoundMode()
             widgets = (
-                ScientificInput(defaults.concentration_cm3, 0, max_exponent=24),
+                ScientificInput(
+                    defaults.concentration_cm3, 0, max_exponent=24,
+                    max_value=LIMITS['bound.concentration_cm3'][1],
+                ),
                 spin_box(defaults.mass_in_me, 0.001, 1000.0, decimals=3, step=0.1),
                 spin_box(defaults.wavelength_nm, 100.0, 10_000.0, decimals=1, step=10.0),
                 spin_box(defaults.damping_cm1, -100_000.0, 100_000.0, decimals=1, step=100.0),
@@ -155,6 +185,7 @@ class ParameterPanel(QWidget):
     def _update_visible_modes(self):
         for row in range(MAX_BOUND_MODES):
             self.mode_table.setRowHidden(row, row >= self.mode_count.value())
+        fit_table_height(self.mode_table, self.mode_count.value())
         self._on_changed()
 
     def _update_plasma_label(self):

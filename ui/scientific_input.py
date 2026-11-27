@@ -11,8 +11,12 @@ class ScientificInput(QWidget):
 
     valueChanged = Signal(float)
 
-    def __init__(self, mantissa=0.0, exponent=0, max_exponent=24, parent=None):
+    def __init__(self, mantissa=0.0, exponent=0, max_exponent=24,
+                 max_value=None, parent=None):
         super().__init__(parent)
+        # Предел самого числа, например N0 ≤ 1e23: при степени 23
+        # мантисса ограничивается, чтобы нельзя было ввести 9.999e23.
+        self.max_value = max_value
 
         self.mantissa = QDoubleSpinBox()
         self.mantissa.setRange(0.0, 9.999)
@@ -31,7 +35,23 @@ class ScientificInput(QWidget):
         layout.addWidget(self.exponent, stretch=1)
 
         self.mantissa.valueChanged.connect(self._emit)
-        self.exponent.valueChanged.connect(self._emit)
+        self.exponent.valueChanged.connect(self._on_exponent_changed)
+        self._apply_limit()
+
+    def _apply_limit(self):
+        """Ставит максимум мантиссы: мантисса·10^степень ≤ max_value."""
+        if self.max_value is None:
+            return
+        limit = min(9.999, self.max_value / 10.0 ** self.exponent.value())
+        # Qt сам уменьшит значение, если оно больше нового максимума.
+        self.mantissa.setMaximum(limit)
+
+    def _on_exponent_changed(self, *_):
+        """Пересчитывает предел мантиссы при смене степени."""
+        self.mantissa.blockSignals(True)
+        self._apply_limit()
+        self.mantissa.blockSignals(False)
+        self._emit()
 
     def value(self) -> float:
         return self.mantissa.value() * 10.0 ** self.exponent.value()
@@ -48,8 +68,9 @@ class ScientificInput(QWidget):
 
         for box in (self.mantissa, self.exponent):
             box.blockSignals(True)
-        self.mantissa.setValue(mantissa)
         self.exponent.setValue(exponent)
+        self._apply_limit()
+        self.mantissa.setValue(mantissa)
         for box in (self.mantissa, self.exponent):
             box.blockSignals(False)
         self._emit()

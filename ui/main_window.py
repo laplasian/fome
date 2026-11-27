@@ -18,6 +18,11 @@ from PySide6.QtWidgets import (
 )
 
 from calc.data_io import save_spectrum
+from calc.presets import (
+    get_preset_material,
+    get_preset_names,
+    get_preset_thickness,
+)
 from calc.spectrum import SPECTRUM_QUANTITIES, calculate_spectrum
 from ui.angular_window import AngularWindow
 from ui.film_window import FilmWindow
@@ -32,7 +37,7 @@ MAIN_PLOTS = {
     "eps_imag": ("ε'' — мнимая часть ε", "ε''"),
     "n": ("n — реальная часть N", "n"),
     "k": ("k — мнимая часть N", "k"),
-    "R12": ("R₁₂ — отражение от полубесконечной среды", "R₁₂"),
+    "R12": ("R₁₂ — отражение по интенсивности", "R₁₂"),
     "phase12_rad": ("φ₁₂ — фаза отражения", "φ₁₂, рад"),
     "alpha_cm1": ("α — коэффициент поглощения", "α, см⁻¹"),
 }
@@ -42,6 +47,22 @@ X_AXES = {
     "ev": ("Энергия фотона E, эВ", "energy_ev"),
 }
 
+
+
+def show_window(window):
+    """Показывает окно и выводит его наверх.
+
+    Свёрнутое или ещё не показанное окно разворачивается на весь экран:
+    по заданию графики должны быть во весь экран, а фиксированный размер
+    не помещается на экран ноутбука 1366×768.
+    """
+    if window.isVisible() and not window.isMinimized():
+        window.raise_()
+        window.activateWindow()
+        return
+    window.showMaximized()
+    window.raise_()
+    window.activateWindow()
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -138,6 +159,13 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         self._add_action(file_menu, "Выход", self.close, "Ctrl+Q")
 
+        examples_menu = menu.addMenu('Примеры')
+        for name in get_preset_names():
+            self._add_action(
+                examples_menu, name,
+                lambda _=False, n=name: self.load_preset(n),
+            )
+
         windows_menu = menu.addMenu("Окна")
         self._add_action(windows_menu, "Плёнка и эксперимент", self.open_film_window)
         self._add_action(windows_menu, "Падение под углом", self.open_angular_window)
@@ -206,17 +234,24 @@ class MainWindow(QMainWindow):
             save_spectrum(path, self.spectrum, keys, self.panel.material(), x_axis=self.x_axis.currentData())
             self.statusBar().showMessage(f"Сохранено: {path}", 5000)
 
+    def load_preset(self, name):
+        """Подставляет в панель параметры примера из меню «Примеры»."""
+        self.panel.set_model(
+            get_preset_material(name), get_preset_thickness(name)
+        )
+        self.statusBar().showMessage(f'Пример: {name}', 5000)
+
     def open_film_window(self):
+        """Открывает окно плёнки, впервые — на весь экран."""
         if self.film_window is None:
             self.film_window = FilmWindow(self.panel)
-        self.film_window.show()
-        self.film_window.raise_()
+        show_window(self.film_window)
 
     def open_angular_window(self):
+        """Открывает окно падения под углом, впервые — на весь экран."""
         if self.angular_window is None:
             self.angular_window = AngularWindow(self.panel)
-        self.angular_window.show()
-        self.angular_window.raise_()
+        show_window(self.angular_window)
 
     def show_instruction(self):
         QMessageBox.information(self, "Инструкция", INSTRUCTION_HTML)
